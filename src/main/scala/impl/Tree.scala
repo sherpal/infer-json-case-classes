@@ -69,8 +69,18 @@ object Tree {
     def isList: Boolean = false
   }
 
+  case object BooleanLeaf extends Leaf {
+    val name: String = "Boolean"
+    def isList: Boolean = false
+  }
+
   case object EmptyJson extends Leaf {
     val name: String = "Empty"
+    def isList: Boolean = false
+  }
+
+  case object NullLeaf extends Leaf {
+    val name: String = "String" // assume it's null
     def isList: Boolean = false
   }
 
@@ -91,8 +101,10 @@ object Tree {
     def tryDouble: Try[Double] = Try(value.num)
     def tryList: Try[List[Value.Value]] = Try(value.arr.toList)
     def tryString: Try[String] = Try(value.str)
+    def tryBoolean: Try[Boolean] = Try(value.bool)
+    def tryNull: Try[Unit] = Try(()).filter(_ => value.isNull)
 
-    LazyList(tryString, tryInt, tryDouble, tryList, tryObj)
+    LazyList(tryString, tryBoolean, tryInt, tryDouble, tryList, tryObj, tryNull)
       .find(_.isSuccess) match {
       case Some(Success(_: String)) =>
         StringLeaf
@@ -102,6 +114,12 @@ object Tree {
 
       case Some(Success(_: Double)) =>
         DoubleLeaf
+
+      case Some(Success(_: Boolean)) =>
+        BooleanLeaf
+
+      case Some(Success(_: Unit)) =>
+        NullLeaf
 
       case Some(Success(subValue: Map[String @unchecked, Value.Value @unchecked])) =>
         val children = subValue.toList
