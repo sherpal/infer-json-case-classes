@@ -10,11 +10,11 @@ sealed trait Tree {
 
   def isList: Boolean
 
-  def typeName: String = if (isList) s"List[$name]" else name
+  final def typeName: String = if (isList) s"List[$name]" else name
 
   val children: Map[Tree.FieldName, Tree]
 
-  def display(packagePath: String): String =
+  final def display(packagePath: String): String =
     s"""
        |package $packagePath
        |
@@ -35,10 +35,10 @@ sealed trait Tree {
        |}
        |""".stripMargin
 
-  def allDisplays(packagePath: String): List[String] =
+  final def allDisplays(packagePath: String): List[String] =
     display(packagePath) +: children.values.filterNot(_.isLeaf).flatMap(_.allDisplays(packagePath)).toList
 
-  def namedAllDisplays(packagePath: String): List[(String, String)] =
+  final def namedAllDisplays(packagePath: String): List[(String, String)] =
     (name -> display(packagePath)) +: children.values.filterNot(_.isLeaf).flatMap(_.namedAllDisplays(packagePath)).toList
 
 }
