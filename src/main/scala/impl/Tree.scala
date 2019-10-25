@@ -2,8 +2,6 @@ package impl
 
 import ujson.Value
 
-import scala.util.{Success, Try}
-
 sealed trait Tree {
 
   final def isLeaf: Boolean = this.isInstanceOf[Tree.Leaf]
@@ -93,35 +91,22 @@ object Tree {
 
   def apply(name: String, children: Map[FieldName, Tree], isList: Boolean): Tree = new Node(name, children, isList)
 
-
   def parseValue(name: String, value: Value.Value): Tree = {
 
-    def tryObj: Try[Map[String, Value.Value]] = Try(value.obj.toMap)
-    def tryInt: Try[Int] = Try(value.num).filter(x => x.toInt.toDouble == x).map(_.toInt)
-    def tryDouble: Try[Double] = Try(value.num)
-    def tryList: Try[List[Value.Value]] = Try(value.arr.toList)
-    def tryString: Try[String] = Try(value.str)
-    def tryBoolean: Try[Boolean] = Try(value.bool)
-    def tryNull: Try[Unit] = Try(()).filter(_ => value.isNull)
+    def maybeInt: Option[IntLeaf.type] = value.numOpt.filter(x => x.toInt.toDouble == x).map(_ => IntLeaf)
+    def maybeDouble: Option[DoubleLeaf.type] = value.numOpt.map(_ => DoubleLeaf)
+    def maybeString: Option[StringLeaf.type] = value.strOpt.map(_ => StringLeaf)
+    def maybeBoolean: Option[BooleanLeaf.type] = value.boolOpt.map(_ => BooleanLeaf)
+    def maybeNull: Option[NullLeaf.type] = Some(NullLeaf).filter(_ => value.isNull)
+    def maybeObj: Option[Map[String, Value.Value]] = value.objOpt.map(_.toMap)
+    def maybeList: Option[List[Value.Value]] = value.arrOpt.map(_.toList)
 
-    LazyList(tryString, tryBoolean, tryInt, tryDouble, tryList, tryObj, tryNull)
-      .find(_.isSuccess) match {
-      case Some(Success(_: String)) =>
-        StringLeaf
+    LazyList(maybeString, maybeBoolean, maybeInt, maybeDouble, maybeList, maybeObj, maybeNull)
+      .find(_.isDefined).flatten match {
+      case Some(leaf: Leaf) =>
+        leaf
 
-      case Some(Success(_: Int)) =>
-        IntLeaf
-
-      case Some(Success(_: Double)) =>
-        DoubleLeaf
-
-      case Some(Success(_: Boolean)) =>
-        BooleanLeaf
-
-      case Some(Success(_: Unit)) =>
-        NullLeaf
-
-      case Some(Success(subValue: Map[String @unchecked, Value.Value @unchecked])) =>
+      case Some(subValue: Map[String @unchecked, Value.Value @unchecked]) =>
         val children = subValue.toList
           .map { case (key, v) => (key, (key.capitalize, v)) }
           .toMap
@@ -130,7 +115,7 @@ object Tree {
 
         Tree(name, children, isList = false)
 
-      case Some(Success(ls: List[Value.Value @unchecked])) =>
+      case Some(ls: List[Value.Value @unchecked]) =>
         ls match {
           case head :: _ =>
             val treeInList = parseValue(name, head)
