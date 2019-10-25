@@ -103,8 +103,6 @@ object Open extends DefaultTSTypes {
 
 These things need to be fixed:
 - Doesn't handle field name that are Scala key words
-- Doesn't handle explicit nulls
-- Doesn't handle booleans
 
 ## Upcoming
 
