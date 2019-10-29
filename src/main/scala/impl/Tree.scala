@@ -8,11 +8,7 @@ sealed trait Tree {
 
   val name: String
 
-  def isList: Boolean
-
-  final def typeName: String = if (isList) s"List[$name]" else name
-
-  val children: Map[Tree.FieldName, Tree]
+  val children: Map[Tree.FieldName, JsonField]
 
   final def display(packagePath: String): String =
     s"""
@@ -22,7 +18,9 @@ sealed trait Tree {
        |import play.api.libs.json.{Json, Reads, Writes}
        |
        |final case class $name(
-       |${children.toList.map { case (fieldName, tpe) => "\t" + fieldName + ": " + tpe.typeName } .mkString(",\n")}
+       |${children.toList
+         .map { case (fieldName, field) => "\t" + fieldName + ": " + field.typeName(true) }
+         .mkString(",\n")}
        |)
        |
        |object $name extends DefaultTSTypes {
@@ -36,62 +34,53 @@ sealed trait Tree {
        |""".stripMargin
 
   final def allDisplays(packagePath: String): List[String] =
-    display(packagePath) +: children.values.filterNot(_.isLeaf).flatMap(_.allDisplays(packagePath)).toList
+    display(packagePath) +: children.values.filterNot(_.isLeaf).flatMap(_.subTree.allDisplays(packagePath)).toList
 
   final def namedAllDisplays(packagePath: String): List[(String, String)] =
-    (name -> display(packagePath)) +: children.values.filterNot(_.isLeaf).flatMap(_.namedAllDisplays(packagePath)).toList
+    (name -> display(packagePath)) +: children.values
+      .filterNot(_.isLeaf)
+      .flatMap(_.subTree.namedAllDisplays(packagePath))
+      .toList
 
 }
-
 
 object Tree {
 
   type FieldName = String
 
   trait Leaf extends Tree {
-    final val children: Map[FieldName, Tree] = Map()
+    final val children: Map[FieldName, JsonField] = Map()
   }
 
   case object StringLeaf extends Leaf {
     val name: String = "String"
-    def isList: Boolean = false
   }
 
   case object IntLeaf extends Leaf {
     val name: String = "Int"
-    def isList: Boolean = false
   }
 
   case object DoubleLeaf extends Leaf {
     val name: String = "Double"
-    def isList: Boolean = false
   }
 
   case object BooleanLeaf extends Leaf {
     val name: String = "Boolean"
-    def isList: Boolean = false
   }
 
   case object EmptyJson extends Leaf {
     val name: String = "Empty"
-    def isList: Boolean = false
   }
 
   case object NullLeaf extends Leaf {
-    val name: String = "String" // assume it's null
-    def isList: Boolean = false
+    val name: String = "String" // assume it's String
   }
 
-  final class ListLeaf(leaf: Leaf) extends Leaf {
-    def isList: Boolean = true
-    val name: String = leaf.name
-  }
+  final class Node(val name: String, val children: Map[FieldName, JsonField]) extends Tree
 
-  final class Node(val name: String, val children: Map[FieldName, Tree], val isList: Boolean) extends Tree
+  def apply(name: String, children: Map[FieldName, JsonField]): Tree = new Node(name, children)
 
-  def apply(name: String, children: Map[FieldName, Tree], isList: Boolean): Tree = new Node(name, children, isList)
-
-  def parseValue(name: String, value: Value.Value): Tree = {
+  def parseValue(name: String, value: Value.Value): JsonField = {
 
     def maybeInt: Option[IntLeaf.type] = value.numOpt.filter(x => x.toInt.toDouble == x).map(_ => IntLeaf)
     def maybeDouble: Option[DoubleLeaf.type] = value.numOpt.map(_ => DoubleLeaf)
@@ -102,27 +91,24 @@ object Tree {
     def maybeList: Option[List[Value.Value]] = value.arrOpt.map(_.toList)
 
     LazyList(maybeString, maybeBoolean, maybeInt, maybeDouble, maybeList, maybeObj, maybeNull)
-      .find(_.isDefined).flatten match {
+      .find(_.isDefined)
+      .flatten match {
       case Some(leaf: Leaf) =>
-        leaf
+        JsonField(name, leaf, isList = false, isOptional = false)
 
       case Some(subValue: Map[String @unchecked, Value.Value @unchecked]) =>
-        val children = subValue.toList
-          .map { case (key, v) => (key, (key.capitalize, v)) }
-          .toMap
-          .view.mapValues((parseValue _).tupled)
-          .toMap
+        val children = subValue.toList.map { case (key, v) => (key, parseValue(key.capitalize, v)) }.toMap
 
-        Tree(name, children, isList = false)
+        JsonField(name, Tree(name, children), isList = false, isOptional = false)
 
       case Some(ls: List[Value.Value @unchecked]) =>
         ls match {
           case head :: _ =>
             val treeInList = parseValue(name, head)
-            Tree(name, treeInList.children, isList = true)
+            treeInList.copy(isList = true)
 
           case Nil => // if list is empty, assume list of strings
-            new ListLeaf(StringLeaf)
+            JsonField(name, StringLeaf, isList = true, isOptional = false)
         }
 
       case _ =>
@@ -131,5 +117,33 @@ object Tree {
 
   }
 
+  def collapseTrees(trees: List[Tree]): Option[Tree] = trees match {
+    case Nil               => None
+    case (head: Leaf) :: _ => Some(head)
+    case list =>
+      val numTrees = list.length
+      val newChildren = list
+        .flatMap(_.children.toList)
+        .groupBy(_._1)
+        .toList
+        .map {
+          case (fieldName, children) =>
+            val jsonFields = children.map(_._2)
+            (
+              fieldName,
+              collapseTrees(jsonFields.map(_.subTree)).get,
+              jsonFields.head.isList,
+              jsonFields.exists(_.isOptional) || children.length < numTrees
+            )
+        }
+        .map((JsonField.apply _).tupled)
+        .map { case jf @ JsonField(name, _, _, _) => name -> jf }
+        .toMap
+
+      Some(
+        Tree(list.head.name, newChildren)
+      )
+
+  }
 
 }
