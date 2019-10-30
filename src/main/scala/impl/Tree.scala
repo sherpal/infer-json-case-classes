@@ -1,5 +1,6 @@
 package impl
 
+import options.{KeyWords, Options}
 import ujson.Value
 
 sealed trait Tree {
@@ -10,36 +11,43 @@ sealed trait Tree {
 
   val children: Map[Tree.FieldName, JsonField]
 
-  final def display(packagePath: String): String =
+  final def display(packagePath: String, options: Options): String =
     s"""
        |package $packagePath
        |
-       |import nl.codestar.scalatsi.{DefaultTSTypes, TSIType, TSType}
-       |import play.api.libs.json.{Json, Reads, Writes}
+       |${if (options.scalaTSI) "import nl.codestar.scalatsi.{DefaultTSTypes, TSIType, TSType}" else ""}
+       |${if (options.playJson) "import play.api.libs.json.{Json, Reads, Writes}" else ""}
        |
        |final case class $name(
        |${children.toList
-         .map { case (fieldName, field) => "\t" + fieldName + ": " + field.typeName(true) }
+         .map {
+           case (fieldName, field) =>
+             val fieldNameDisplay = if (KeyWords.list.contains(fieldName)) "`" + fieldName + "`" else fieldName
+             "\t" + fieldNameDisplay + ": " + field.typeName(options.optionalFieldAsOptions)
+         }
          .mkString(",\n")}
        |)
        |
-       |object $name extends DefaultTSTypes {
-       |  import upickle.default.{macroRW, ReadWriter}
-       |  implicit val readWriter: ReadWriter[$name] = macroRW
+       |object $name ${if (options.scalaTSI) "extends DefaultTSTypes " else ""}{
+       |  ${if (options.upickle) "import upickle.default.{macroRW, ReadWriter}" else ""}
+       |  ${if (options.upickle) s"implicit val readWriter: ReadWriter[$name] = macroRW" else ""}
        |
-       |  implicit final val reader: Reads[$name] = Json.reads[$name]
-       |  implicit final val writer: Writes[$name] = Json.writes[$name]
-       |  implicit final val serializer: TSIType[$name] = TSType.fromCaseClass[$name]
+       |  ${if (options.playJson) s"implicit final val reader: Reads[$name] = Json.reads[$name]" else ""}
+       |  ${if (options.playJson) s"implicit final val writer: Writes[$name] = Json.writes[$name]" else ""}
+       |  ${if (options.scalaTSI) s"implicit final val serializer: TSIType[$name] = TSType.fromCaseClass[$name]" else ""}
        |}
        |""".stripMargin
 
-  final def allDisplays(packagePath: String): List[String] =
-    display(packagePath) +: children.values.filterNot(_.isLeaf).flatMap(_.subTree.allDisplays(packagePath)).toList
-
-  final def namedAllDisplays(packagePath: String): List[(String, String)] =
-    (name -> display(packagePath)) +: children.values
+  final def allDisplays(packagePath: String, options: Options): List[String] =
+    display(packagePath, options) +: children.values
       .filterNot(_.isLeaf)
-      .flatMap(_.subTree.namedAllDisplays(packagePath))
+      .flatMap(_.subTree.allDisplays(packagePath, options))
+      .toList
+
+  final def namedAllDisplays(packagePath: String, options: Options): List[(String, String)] =
+    (name -> display(packagePath, options)) +: children.values
+      .filterNot(_.isLeaf)
+      .flatMap(_.subTree.namedAllDisplays(packagePath, options))
       .toList
 
 }
@@ -103,9 +111,11 @@ object Tree {
 
       case Some(ls: List[Value.Value @unchecked]) =>
         ls match {
-          case head :: _ =>
-            val treeInList = parseValue(name, head)
-            treeInList.copy(isList = true)
+          case head :: tail =>
+            val treesInList = (head +: tail).map(parseValue(name, _))
+            val collapsed = collapseTrees(treesInList.map(_.subTree)).get
+
+            JsonField(name, collapsed, isList = true, isOptional = false)
 
           case Nil => // if list is empty, assume list of strings
             JsonField(name, StringLeaf, isList = true, isOptional = false)

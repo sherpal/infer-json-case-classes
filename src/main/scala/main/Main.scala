@@ -1,9 +1,9 @@
 package main
 
 import impl.Tree
+import options.Options
 
 object Main {
-
 
   def main(args: Array[String]): Unit = {
 
@@ -47,7 +47,10 @@ object Main {
     val field2 = Tree.parseValue("foo", json2)
 
     println(
-      Tree.collapseTrees(List(field1.subTree, field2.subTree)).get.display("bar")
+      Tree
+        .collapseTrees(List(field1.subTree, field2.subTree))
+        .get
+        .display("bar", Options.default.copy(scalaTSI = false))
     )
 
   }
