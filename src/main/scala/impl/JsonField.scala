@@ -6,10 +6,12 @@ final case class JsonField(name: String, subTree: Tree, isList: Boolean, isOptio
   def typeName(options: Options): String = {
     def encloseList(n: String) = if (isList) s"List[$n]" else n
     def encloseOption(n: String) =
-      if (options.optionalFieldAsOptions && isOptional) s"Option[$n]"
-      else if (isOptional && isList) s"$n = Nil"
-      else if (isOptional) s"$n = ${options.defaultsForTypes.getOrElse(n, "???")}"
-      else n
+      (isOptional, options.optionalFieldAsOptions, isList) match {
+        case (false, _, _) => n
+        case (true, true, _) => s"Option[$n]"
+        case (true, false, true) => s"$n = Nil"
+        case (true, false, false) => s"$n = ${options.defaultsForTypes.getOrElse(n, "???")}"
+      }
     encloseOption(encloseList(subTree.name))
   }
 

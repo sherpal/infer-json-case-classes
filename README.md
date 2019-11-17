@@ -99,14 +99,8 @@ object Open extends DefaultTSTypes {
 }
 ```
 
-## Issues
-
-These things need to be fixed:
-- Doesn't handle field name that are Scala key words
-
 ## Upcoming
 
 The following things should also be implemented:
 - whole battery of tests
-- allowing to give several Json of the same kind of objects to try to infer possibly missing fields.
 - `@JSExport` for use with [Scala.js](https://www.scala-js.org/)
