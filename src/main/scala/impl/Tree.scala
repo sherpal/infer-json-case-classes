@@ -23,7 +23,7 @@ sealed trait Tree {
          .map {
            case (fieldName, field) =>
              val fieldNameDisplay = if (KeyWords.list.contains(fieldName)) "`" + fieldName + "`" else fieldName
-             "\t" + fieldNameDisplay + ": " + field.typeName(options.optionalFieldAsOptions)
+             "\t" + fieldNameDisplay + ": " + field.typeName(options)
          }
          .mkString(",\n")}
        |)

@@ -36,7 +36,8 @@ object Main {
     val str2 =
       """
         |{
-        | "hello": "cluche"
+        | "hello": "cluche",
+        | "other": ["un", "deux"]
         |}
         |""".stripMargin
 
@@ -50,7 +51,7 @@ object Main {
       Tree
         .collapseTrees(List(field1.subTree, field2.subTree))
         .get
-        .display("bar", Options.default.copy(scalaTSI = false))
+        .display("bar", Options.default.copy(scalaTSI = false, optionalFieldAsOptions = true))
     )
 
   }
