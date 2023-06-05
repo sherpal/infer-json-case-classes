@@ -1,4 +1,4 @@
-# Infer Json case classes
+# Infer JSON case classes
 
 The goal of this project is, given the json representation of an object, automatically create all the case classes that will represent that object.
 
